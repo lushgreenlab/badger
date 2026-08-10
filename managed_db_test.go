@@ -6,6 +6,7 @@
 package badger
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"math"
@@ -61,6 +62,20 @@ func vlogFilesSize(t *testing.T, dir string) int64 {
 		size += info.Size()
 	}
 	return size
+}
+
+func numNonL0WholePrefixTables(db *DB, prefix []byte) int {
+	var count int
+	for _, level := range db.lc.levels[1:] {
+		level.RLock()
+		for _, tbl := range level.tables {
+			if bytes.HasPrefix(tbl.Smallest(), prefix) && bytes.HasPrefix(tbl.Biggest(), prefix) {
+				count++
+			}
+		}
+		level.RUnlock()
+	}
+	return count
 }
 
 func numKeysManaged(db *DB, readTs uint64) int {
@@ -486,6 +501,7 @@ func TestDropPrefixWholeTableRecordsVlogDiscardStats(t *testing.T) {
 			require.NoError(t, db.Flatten(1))
 			require.Equal(t, 2_000, numKeys(db))
 			require.Equal(t, 0, db.lc.levels[0].numTables())
+			require.Positive(t, numNonL0WholePrefixTables(db, []byte("drop/")))
 
 			fid, discard := db.vlog.discardStats.MaxDiscard()
 			require.Zero(t, fid)
@@ -512,6 +528,49 @@ func TestDropPrefixWholeTableRecordsVlogDiscardStats(t *testing.T) {
 			require.Less(t, after, before)
 		})
 	}
+}
+
+func TestDropPrefixWholeTableDiscardStatsWithMultiplePrefixes(t *testing.T) {
+	dir := t.TempDir()
+	opts := getTestOptions(dir).
+		WithValueThreshold(32).
+		WithValueLogFileSize(5 << 20).
+		WithBaseTableSize(32 << 10).
+		WithCompactL0OnClose(true)
+
+	db, err := Open(opts)
+	require.NoError(t, err)
+
+	const keysPerPrefix = 10_000
+	value := bytes.Repeat([]byte("v"), 256)
+	wb := db.NewWriteBatch()
+	for _, prefix := range []string{"drop/a/", "drop/b/", "keep/"} {
+		for i := 0; i < keysPerPrefix; i++ {
+			require.NoError(t, wb.Set([]byte(fmt.Sprintf("%s%08d", prefix, i)), value))
+		}
+	}
+	require.NoError(t, wb.Flush())
+	require.NoError(t, db.Close())
+
+	db, err = Open(opts)
+	require.NoError(t, err)
+	defer db.Close()
+	require.NoError(t, db.Flatten(1))
+	require.Positive(t, numNonL0WholePrefixTables(db, []byte("drop/a/")))
+	require.Positive(t, numNonL0WholePrefixTables(db, []byte("drop/b/")))
+
+	require.NoError(t, db.DropPrefix([]byte("drop/a/"), []byte("drop/b/")))
+	require.Equal(t, keysPerPrefix, numKeys(db))
+	_, discard := db.vlog.discardStats.MaxDiscard()
+	require.Greater(t, discard, int64(1<<20))
+
+	// Repeating an already applied prefix remains a no-op, and retained keys stay readable.
+	require.NoError(t, db.DropPrefix([]byte("drop/a/")))
+	require.Equal(t, keysPerPrefix, numKeys(db))
+	require.NoError(t, db.View(func(txn *Txn) error {
+		_, err := txn.Get([]byte("keep/00000000"))
+		return err
+	}))
 }
 
 func TestDropPrefixWithPendingTxn(t *testing.T) {

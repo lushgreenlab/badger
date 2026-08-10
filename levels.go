@@ -927,8 +927,11 @@ func (s *levelsController) compactBuildTables(
 	y.NumCompactionTablesAdd(s.kv.opt.MetricsEnabled, numTables)
 	defer y.NumCompactionTablesAdd(s.kv.opt.MetricsEnabled, -numTables)
 
-	wholeTableDiscardStats := make(map[uint32]int64)
+	var wholeTableDiscardStats map[uint32]int64
 	recordWholeTableDiscardStats := func(t *table.Table) {
+		if s.kv.opt.InMemory {
+			return
+		}
 		it := t.NewIterator(table.NOCACHE)
 		defer it.Close()
 		for it.Rewind(); it.Valid(); it.Next() {
@@ -938,6 +941,9 @@ func (s *levelsController) compactBuildTables(
 			}
 			var vp valuePointer
 			vp.Decode(vs.Value)
+			if wholeTableDiscardStats == nil {
+				wholeTableDiscardStats = make(map[uint32]int64)
+			}
 			wholeTableDiscardStats[vp.Fid] += int64(vp.Len)
 		}
 	}
@@ -957,13 +963,13 @@ func (s *levelsController) compactBuildTables(
 		return true
 	}
 	var valid []*table.Table
+	// topTables are always consumed by subcompact, which already records their value
+	// pointers as discard stats. Only bottom tables skipped by the whole-table fast
+	// path need explicit accounting here.
 	for _, table := range botTables {
 		if keepTable(table) {
 			valid = append(valid, table)
 		}
-	}
-	if len(wholeTableDiscardStats) > 0 {
-		s.kv.vlog.updateDiscardStats(wholeTableDiscardStats)
 	}
 
 	newIterator := func() []y.Iterator {
@@ -1023,6 +1029,14 @@ func (s *levelsController) compactBuildTables(
 		// -- we're the only holders of a ref).
 		_ = decrRefs(newTables)
 		return nil, nil, y.Wrapf(err, "while running compactions for: %+v", cd)
+	}
+	// Match the existing compaction discard-accounting order and publish before
+	// the manifest update. This avoids losing the only copy of these pointers if
+	// the process crashes after the tables are removed. A later manifest failure
+	// can only overestimate garbage; value-log GC revalidates pointer liveness
+	// before rewriting or dropping an entry.
+	if len(wholeTableDiscardStats) > 0 {
+		s.kv.vlog.updateDiscardStats(wholeTableDiscardStats)
 	}
 
 	sort.Slice(newTables, func(i, j int) bool {
