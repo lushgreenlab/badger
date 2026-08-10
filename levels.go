@@ -927,13 +927,30 @@ func (s *levelsController) compactBuildTables(
 	y.NumCompactionTablesAdd(s.kv.opt.MetricsEnabled, numTables)
 	defer y.NumCompactionTablesAdd(s.kv.opt.MetricsEnabled, -numTables)
 
+	wholeTableDiscardStats := make(map[uint32]int64)
+	recordWholeTableDiscardStats := func(t *table.Table) {
+		it := t.NewIterator(table.NOCACHE)
+		defer it.Close()
+		for it.Rewind(); it.Valid(); it.Next() {
+			vs := it.Value()
+			if vs.Meta&bitValuePointer == 0 {
+				continue
+			}
+			var vp valuePointer
+			vp.Decode(vs.Value)
+			wholeTableDiscardStats[vp.Fid] += int64(vp.Len)
+		}
+	}
+
 	keepTable := func(t *table.Table) bool {
 		for _, prefix := range cd.dropPrefixes {
 			if bytes.HasPrefix(t.Smallest(), prefix) &&
 				bytes.HasPrefix(t.Biggest(), prefix) {
 				// All the keys in this table have the dropPrefix. So, this
 				// table does not need to be in the iterator and can be
-				// dropped immediately.
+				// dropped immediately. Record its value pointers first so
+				// value log GC can reclaim the corresponding bytes.
+				recordWholeTableDiscardStats(t)
 				return false
 			}
 		}
@@ -944,6 +961,9 @@ func (s *levelsController) compactBuildTables(
 		if keepTable(table) {
 			valid = append(valid, table)
 		}
+	}
+	if len(wholeTableDiscardStats) > 0 {
+		s.kv.vlog.updateDiscardStats(wholeTableDiscardStats)
 	}
 
 	newIterator := func() []y.Iterator {

@@ -6,10 +6,12 @@
 package badger
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -46,6 +48,19 @@ func numKeys(db *DB) int {
 	})
 	y.Check(err)
 	return count
+}
+
+func vlogFilesSize(t *testing.T, dir string) int64 {
+	t.Helper()
+	paths, err := filepath.Glob(filepath.Join(dir, "*.vlog"))
+	require.NoError(t, err)
+	var size int64
+	for _, path := range paths {
+		info, err := os.Stat(path)
+		require.NoError(t, err)
+		size += info.Size()
+	}
+	return size
 }
 
 func numKeysManaged(db *DB, readTs uint64) int {
@@ -430,6 +445,73 @@ func TestDropPrefix(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 0, numKeys(db2))
 	require.NoError(t, db2.Close())
+}
+
+func TestDropPrefixWholeTableRecordsVlogDiscardStats(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		encryptionKey []byte
+	}{
+		{name: "plain"},
+		{name: "encrypted", encryptionKey: []byte("badgerkey16bytes")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			opts := getTestOptions(dir).
+				WithValueThreshold(32).
+				WithValueLogFileSize(5 << 20).
+				WithCompactL0OnClose(true).
+				WithIndexCacheSize(10 << 20).
+				WithEncryptionKey(tc.encryptionKey)
+
+			db, err := Open(opts)
+			require.NoError(t, err)
+
+			value := make([]byte, 8<<10)
+			for i := range value {
+				value[i] = byte(i)
+			}
+			wb := db.NewWriteBatch()
+			for i := 0; i < 2_000; i++ {
+				require.NoError(t, wb.Set([]byte(fmt.Sprintf("drop/%08d", i)), value))
+			}
+			require.NoError(t, wb.Flush())
+			require.NoError(t, db.Close())
+
+			// Reopen first so the mutable memtable is gone. Otherwise DropPrefix flushes it into L0
+			// and L0 compaction records the value pointers, masking the non-L0 whole-table path.
+			db, err = Open(opts)
+			require.NoError(t, err)
+			defer db.Close()
+			require.NoError(t, db.Flatten(1))
+			require.Equal(t, 2_000, numKeys(db))
+			require.Equal(t, 0, db.lc.levels[0].numTables())
+
+			fid, discard := db.vlog.discardStats.MaxDiscard()
+			require.Zero(t, fid)
+			require.Zero(t, discard)
+
+			require.NoError(t, db.DropPrefix([]byte("drop/")))
+			require.Zero(t, numKeys(db))
+			fid, discard = db.vlog.discardStats.MaxDiscard()
+			require.NotZero(t, fid)
+			require.Positive(t, discard)
+
+			before := vlogFilesSize(t, dir)
+			var rewrites int
+			for {
+				err = db.RunValueLogGC(0.5)
+				if errors.Is(err, ErrNoRewrite) {
+					break
+				}
+				require.NoError(t, err)
+				rewrites++
+			}
+			after := vlogFilesSize(t, dir)
+			require.Positive(t, rewrites)
+			require.Less(t, after, before)
+		})
+	}
 }
 
 func TestDropPrefixWithPendingTxn(t *testing.T) {
