@@ -14,8 +14,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/dgraph-io/badger/v4/table"
-	"github.com/dgraph-io/badger/v4/y"
+	"github.com/lushgreenlab/badger/v4/table"
+	"github.com/lushgreenlab/badger/v4/y"
 )
 
 // TestDropPrepareDrainDoesNotDropWrites is a regression guard for Badger #2308.

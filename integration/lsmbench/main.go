@@ -39,7 +39,7 @@ import (
 	"sync"
 	"time"
 
-	badger "github.com/dgraph-io/badger/v4"
+	badger "github.com/lushgreenlab/badger/v4"
 )
 
 type config struct {

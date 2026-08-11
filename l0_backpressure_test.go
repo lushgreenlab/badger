@@ -14,7 +14,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/dgraph-io/badger/v4/table"
+	"github.com/lushgreenlab/badger/v4/table"
 )
 
 // drainL0 removes the first n tables from L0 and signals the stall cond, mimicking

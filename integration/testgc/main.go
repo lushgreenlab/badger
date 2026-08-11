@@ -17,8 +17,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/dgraph-io/badger/v4"
-	"github.com/dgraph-io/badger/v4/y"
+	"github.com/lushgreenlab/badger/v4"
+	"github.com/lushgreenlab/badger/v4/y"
 	"github.com/dgraph-io/ristretto/v2/z"
 )
 

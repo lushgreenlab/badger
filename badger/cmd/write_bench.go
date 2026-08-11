@@ -21,10 +21,10 @@ import (
 	humanize "github.com/dustin/go-humanize"
 	"github.com/spf13/cobra"
 
-	"github.com/dgraph-io/badger/v4"
-	"github.com/dgraph-io/badger/v4/options"
-	"github.com/dgraph-io/badger/v4/pb"
-	"github.com/dgraph-io/badger/v4/y"
+	"github.com/lushgreenlab/badger/v4"
+	"github.com/lushgreenlab/badger/v4/options"
+	"github.com/lushgreenlab/badger/v4/pb"
+	"github.com/lushgreenlab/badger/v4/y"
 	"github.com/dgraph-io/ristretto/v2/z"
 )
 

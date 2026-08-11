@@ -34,7 +34,7 @@ This document outlines the steps needed to build and push a new release of Badge
 1. Splash the "go index" cache to ensure that the latest release is available to the public with:
 
    ```sh
-   go list -m github.com/dgraph-io/badger/v4@vX.X.X
+   go list -m github.com/lushgreenlab/badger/v4@vX.X.X
    ```
 
 1. If needed, create a new announcement thread in the

@@ -17,8 +17,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dgraph-io/badger/v4/pb"
-	"github.com/dgraph-io/badger/v4/y"
+	"github.com/lushgreenlab/badger/v4/pb"
+	"github.com/lushgreenlab/badger/v4/y"
 	"google.golang.org/protobuf/proto"
 )
 

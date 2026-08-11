@@ -1,7 +1,14 @@
 # BadgerDB
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/dgraph-io/badger/v4.svg)](https://pkg.go.dev/github.com/dgraph-io/badger/v4)
-[![Go Report Card](https://goreportcard.com/badge/github.com/dgraph-io/badger/v4)](https://goreportcard.com/report/github.com/dgraph-io/badger/v4)
+This repository is the `github.com/lushgreenlab/badger/v4` module fork used by
+ObjectDB. It tracks upstream Badger and carries a whole-table drop fix that
+records value-log discard statistics before obsolete tables are removed. The
+independent module path is intentional: downstream Go modules can depend on the
+validated fork directly without relying on a non-transitive `replace` directive.
+Upstream Badger remains available at <https://github.com/dgraph-io/badger>.
+
+[![Go Reference](https://pkg.go.dev/badge/github.com/lushgreenlab/badger/v4.svg)](https://pkg.go.dev/github.com/lushgreenlab/badger/v4)
+[![Go Report Card](https://goreportcard.com/badge/github.com/lushgreenlab/badger/v4)](https://goreportcard.com/report/github.com/lushgreenlab/badger/v4)
 [![Sourcegraph](https://sourcegraph.com/github.com/dgraph-io/badger/-/badge.svg)](https://sourcegraph.com/github.com/dgraph-io/badger?badge)
 [![ci-badger-tests](https://github.com/dgraph-io/badger/actions/workflows/ci-badger-tests.yml/badge.svg)](https://github.com/dgraph-io/badger/actions/workflows/ci-badger-tests.yml)
 [![ci-badger-bank-tests](https://github.com/dgraph-io/badger/actions/workflows/ci-badger-bank-tests.yml/badge.svg)](https://github.com/dgraph-io/badger/actions/workflows/ci-badger-bank-tests.yml)
@@ -58,7 +65,7 @@ To start using Badger, install Go 1.23 or above. Badger v3 and above needs go mo
 project, run the following command
 
 ```sh
-go get github.com/dgraph-io/badger/v4
+go get github.com/lushgreenlab/badger/v4
 ```
 
 This will retrieve the library.
