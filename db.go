@@ -23,14 +23,14 @@ import (
 
 	humanize "github.com/dustin/go-humanize"
 
+	"github.com/dgraph-io/ristretto/v2"
+	"github.com/dgraph-io/ristretto/v2/z"
 	"github.com/lushgreenlab/badger/v4/fb"
 	"github.com/lushgreenlab/badger/v4/options"
 	"github.com/lushgreenlab/badger/v4/pb"
 	"github.com/lushgreenlab/badger/v4/skl"
 	"github.com/lushgreenlab/badger/v4/table"
 	"github.com/lushgreenlab/badger/v4/y"
-	"github.com/dgraph-io/ristretto/v2"
-	"github.com/dgraph-io/ristretto/v2/z"
 )
 
 var (
@@ -739,6 +739,13 @@ func (db *DB) Sync() error {
 	*/
 	db.lock.RLock()
 	memtableSyncError := db.mt.SyncWAL()
+	// A concurrent writer may have rotated a completed transaction's WAL
+	// before Sync acquired the lock. Immutable tables remain recoverable from
+	// their WAL until their SST is installed; include them in this boundary.
+	// Holding the read lock also prevents the flusher from deleting these WALs.
+	for _, mt := range db.imm {
+		memtableSyncError = y.CombineErrors(memtableSyncError, mt.SyncWAL())
+	}
 	db.lock.RUnlock()
 
 	vLogSyncError := db.vlog.sync()
